@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ระบบออกหนังสือขอข้อมูล · TCSD2</title>
+  <meta name="description" content="ระบบสร้างหนังสือขอข้อมูลอัตโนมัติ จาก Template Word + รายการ URL ใน Excel">
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Thai:wght@300;400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&display=swap" rel="stylesheet">
+
+  <link rel="stylesheet" href="style.css">
+
+  <!-- Libraries from CDN -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pizzip/3.1.6/pizzip.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+</head>
+<body>
+
+<div class="grain"></div>
+
+<header class="masthead">
+  <div class="masthead-inner">
+    <div class="brand">
+      <div class="brand-mark">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+          <path d="M14 3v4a1 1 0 0 0 1 1h4"/>
+          <path d="M17 21H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h7l5 5v11a2 2 0 0 1-2 2z"/>
+          <path d="M9 12h6M9 16h6M9 8h2"/>
+        </svg>
+      </div>
+      <div class="brand-text">
+        <div class="brand-eyebrow">Royal Thai Police · TCSD2</div>
+        <h1 class="brand-title">ระบบออกหนังสือขอข้อมูล</h1>
+      </div>
+    </div>
+    <div class="masthead-meta">
+      <span id="templateStatus" class="status status-empty">ยังไม่ได้โหลด Template</span>
+      <button id="manageTemplates" class="btn-ghost" type="button">จัดการ Template</button>
+    </div>
+  </div>
+</header>
+
+<main class="container">
+
+  <!-- ===== Template Manager Drawer ===== -->
+  <section id="templateDrawer" class="drawer">
+    <div class="drawer-head">
+      <div>
+        <div class="section-num">01</div>
+        <h2 class="section-title">Template Manager</h2>
+        <p class="section-desc">อัพโหลดไฟล์ Template Word ทั้ง 3 แบบครั้งแรก — ระบบจะเก็บไว้ในเบราว์เซอร์เครื่องนี้ ไม่ต้องอัพโหลดซ้ำในครั้งถัดไป (ข้อมูลไม่ถูกส่งออกไปไหน)</p>
+      </div>
+      <button id="clearTemplates" class="btn-link" type="button">ล้าง Template ทั้งหมด</button>
+    </div>
+
+    <div class="template-grid">
+      <label class="template-card" data-platform="facebook">
+        <input type="file" accept=".docx" data-tpl="facebook" hidden>
+        <div class="tpl-icon" data-icon="fb">f</div>
+        <div class="tpl-meta">
+          <div class="tpl-name">Facebook</div>
+          <div class="tpl-state" data-state="facebook">คลิกเพื่อเลือกไฟล์</div>
+        </div>
+      </label>
+
+      <label class="template-card" data-platform="instagram">
+        <input type="file" accept=".docx" data-tpl="instagram" hidden>
+        <div class="tpl-icon" data-icon="ig">◉</div>
+        <div class="tpl-meta">
+          <div class="tpl-name">Instagram</div>
+          <div class="tpl-state" data-state="instagram">คลิกเพื่อเลือกไฟล์</div>
+        </div>
+      </label>
+
+      <label class="template-card" data-platform="tiktok">
+        <input type="file" accept=".docx" data-tpl="tiktok" hidden>
+        <div class="tpl-icon" data-icon="tt">♪</div>
+        <div class="tpl-meta">
+          <div class="tpl-name">TikTok</div>
+          <div class="tpl-state" data-state="tiktok">คลิกเพื่อเลือกไฟล์</div>
+        </div>
+      </label>
+    </div>
+  </section>
+
+  <!-- ===== Form ===== -->
+  <section class="form-section">
+    <div class="section-head">
+      <div class="section-num">02</div>
+      <h2 class="section-title">รายละเอียดหนังสือ</h2>
+    </div>
+
+    <div class="form-grid">
+      <div class="field field-platform">
+        <label class="label">แบบฟอร์ม</label>
+        <div class="segmented" role="tablist">
+          <button class="seg active" data-platform="facebook" type="button">Facebook</button>
+          <button class="seg" data-platform="instagram" type="button">Instagram</button>
+          <button class="seg" data-platform="tiktok" type="button">TikTok</button>
+        </div>
+        <div class="hint" id="platformHint">4 URL ต่อ 1 หนังสือ</div>
+      </div>
+
+      <div class="field">
+        <label class="label" for="letterDate">วันที่ออกหนังสือ</label>
+        <input type="text" id="letterDate" placeholder="เช่น 18 พฤษภาคม 2569">
+        <div class="hint">พิมพ์ตามรูปแบบที่ต้องการให้ปรากฏในหนังสือ</div>
+      </div>
+
+      <div class="field">
+        <label class="label" for="letterNo">เลขที่หนังสือเริ่มต้น</label>
+        <input type="text" id="letterNo" inputmode="numeric" placeholder="เช่น 100">
+        <div class="hint">ระบบจะรันเลขถัดไปอัตโนมัติ</div>
+      </div>
+
+      <div class="field">
+        <label class="label" for="startTime">วันที่เริ่มต้นข้อมูลที่ขอ <span class="label-tag">StartTime</span></label>
+        <input type="text" id="startTime" placeholder="เช่น 1 January 2024">
+      </div>
+
+      <div class="field field-excel">
+        <label class="label">รายการ URL <span class="label-tag">Excel</span></label>
+        <label class="drop-zone" id="dropZone" for="excelFile">
+          <input type="file" id="excelFile" accept=".xlsx,.xls" hidden>
+          <div class="drop-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+              <polyline points="17 8 12 3 7 8"/>
+              <line x1="12" y1="3" x2="12" y2="15"/>
+            </svg>
+          </div>
+          <div class="drop-text">
+            <div class="drop-title">ลากไฟล์ Excel มาวางที่นี่</div>
+            <div class="drop-sub">หรือคลิกเพื่อเลือก · รับเฉพาะ .xlsx / .xls</div>
+          </div>
+          <div class="drop-file" id="dropFile"></div>
+        </label>
+        <div class="hint">ระบบจะอ่านทุก cell ทุก sheet — เก็บเฉพาะค่าที่ขึ้นต้นด้วย http:// หรือ https://</div>
+      </div>
+    </div>
+
+    <div class="actions">
+      <div class="actions-info" id="actionsInfo"></div>
+      <div class="actions-buttons">
+        <button id="btnReset" class="btn-secondary" type="button">ล้างข้อมูล</button>
+        <button id="btnRun" class="btn-primary" type="button">
+          <span>ประมวลผล</span>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+        </button>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===== Loading ===== -->
+  <section id="loading" class="loading hidden">
+    <div class="loading-bar"><div class="loading-bar-fill"></div></div>
+    <div class="loading-text">
+      <span id="loadingProgress">0</span> / <span id="loadingTotal">0</span> ฉบับ
+    </div>
+  </section>
+
+  <!-- ===== Result ===== -->
+  <section id="result" class="result hidden">
+    <div class="section-head">
+      <div class="section-num">03</div>
+      <h2 class="section-title">ผลลัพธ์</h2>
+    </div>
+
+    <div id="resultBody"></div>
+  </section>
+
+</main>
+
+<footer class="footer">
+  <div class="footer-inner">
+    <div>
+      <strong>เคล็ดลับการทำ PDF:</strong> หลังดาวน์โหลด .docx แล้ว เปิดไฟล์ใน Microsoft Word → File → Save As → เลือก PDF
+      (หรือใน LibreOffice → File → Export as PDF) จะได้คุณภาพดีที่สุดและ format เหมือนต้นฉบับเป๊ะ
+    </div>
+    <div class="footer-tag">ทำงาน 100% ในเบราว์เซอร์ · ไม่มีการส่งข้อมูลออกไปยัง server ใดๆ</div>
+  </div>
+</footer>
+
+<script src="app.js"></script>
+</body>
+</html>
