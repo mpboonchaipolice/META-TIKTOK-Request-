@@ -145,7 +145,94 @@ function updateTemplateStatus() {
     status.textContent = 'พร้อมใช้งาน · 3 / 3 Template';
   }
 }
+function setupTemplateUpload() {
+  document.querySelectorAll('input[data-tpl]').forEach(input => {
+    input.addEventListener('change', async (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
 
+      const fileName = file.name.toLowerCase();
+
+      if (!fileName.endsWith('.docx')) {
+        alert('กรุณาเลือกไฟล์ .docx เท่านั้น');
+        return;
+      }
+
+      const platform = e.target.dataset.tpl;
+
+      try {
+        const buf = await file.arrayBuffer();
+
+        // ตรวจแบบพื้นฐานว่าเป็นไฟล์ ZIP/DOCX หรือไม่
+        // ไฟล์ .docx จริง ๆ จะขึ้นต้นด้วยตัวอักษร PK
+        const header = new Uint8Array(buf.slice(0, 4));
+        const isZipLike = header[0] === 0x50 && header[1] === 0x4B;
+
+        if (!isZipLike) {
+          alert(
+            'ไฟล์นี้ไม่ใช่ .docx แท้\n\n' +
+            'วิธีแก้:\n' +
+            '1) เปิดไฟล์ใน Microsoft Word\n' +
+            '2) กด File > Save As\n' +
+            '3) เลือก Word Document (*.docx)\n' +
+            '4) เอาไฟล์ใหม่มาอัปโหลดอีกครั้ง'
+          );
+          return;
+        }
+
+        // ลองอ่านด้วย PizZip แบบไม่บล็อกไฟล์เร็วเกินไป
+        try {
+          const testZip = new PizZip(buf);
+
+          if (!testZip.file('word/document.xml')) {
+            console.warn('ไม่พบ word/document.xml แต่จะยังไม่บล็อกทันที:', file.name);
+          }
+        } catch (zipErr) {
+          console.error('DOCX ZIP WARNING:', zipErr);
+          alert(
+            'ระบบอ่านโครงสร้าง .docx ไม่สำเร็จ\n\n' +
+            'กรุณาลอง Save As ไฟล์ Word ใหม่เป็น .docx อีกครั้ง\n' +
+            'ถ้ายังไม่ได้ ให้ส่งไฟล์ Template มาให้ตรวจโครงสร้าง'
+          );
+          return;
+        }
+
+        state.templates[platform] = buf;
+        state.templateNames[platform] = file.name;
+
+        await saveTemplateToDb(platform, buf, file.name);
+
+        markTemplateLoaded(platform, file.name);
+        updateTemplateStatus();
+
+        alert('โหลด Template สำเร็จ: ' + file.name);
+
+      } catch (err) {
+        console.error('โหลด template ไม่สำเร็จ:', err);
+        alert('โหลด template ไม่สำเร็จ: ' + err.message);
+      }
+    });
+  });
+
+  $('clearTemplates').addEventListener('click', async () => {
+    if (!confirm('ล้าง Template ทั้งหมดออกจากเบราว์เซอร์?')) return;
+
+    await clearAllTemplatesFromDb();
+
+    state.templates = {};
+    state.templateNames = {};
+
+    document.querySelectorAll('.template-card').forEach(c => c.classList.remove('loaded'));
+    document.querySelectorAll('.tpl-state').forEach(s => s.textContent = 'คลิกเพื่อเลือกไฟล์');
+    document.querySelectorAll('input[data-tpl]').forEach(i => i.value = '');
+
+    updateTemplateStatus();
+  });
+
+  $('manageTemplates').addEventListener('click', () => {
+    $('templateDrawer').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  });
+}
 function setupTemplateUpload() {
   document.querySelectorAll('input[data-tpl]').forEach(input => {
     input.addEventListener('change', async (e) => {
