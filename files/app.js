@@ -440,7 +440,83 @@ async function processLetters() {
     $('btnRun').disabled = false;
   }
 }
+// ====================================================================
+// PDF Export: Convert generated DOCX Blob to PDF
+// ====================================================================
+async function downloadPdfFromDocxBlob(docxBlob, pdfName) {
+  if (!window.docx || !window.html2pdf) {
+    alert(
+      'ยังโหลดตัวแปลง PDF ไม่ครบ\n\n' +
+      'กรุณาตรวจสอบว่าใน index.html มี docx-preview และ html2pdf แล้ว'
+    );
+    return;
+  }
 
+  const container = document.createElement('div');
+  container.style.position = 'fixed';
+  container.style.left = '-99999px';
+  container.style.top = '0';
+  container.style.width = '794px';
+  container.style.background = '#ffffff';
+  container.style.padding = '0';
+  container.style.margin = '0';
+  container.style.zIndex = '-1';
+
+  document.body.appendChild(container);
+
+  try {
+    await window.docx.renderAsync(docxBlob, container, null, {
+      className: 'docx',
+      inWrapper: true,
+      ignoreWidth: false,
+      ignoreHeight: false,
+      ignoreFonts: false,
+      breakPages: true,
+      renderHeaders: true,
+      renderFooters: true,
+      renderFootnotes: true,
+      renderEndnotes: true
+    });
+
+    const opt = {
+      margin: 0,
+      filename: pdfName,
+      image: {
+        type: 'jpeg',
+        quality: 0.98
+      },
+      html2canvas: {
+        scale: 2,
+        useCORS: true,
+        letterRendering: true,
+        backgroundColor: '#ffffff'
+      },
+      jsPDF: {
+        unit: 'mm',
+        format: 'a4',
+        orientation: 'portrait'
+      },
+      pagebreak: {
+        mode: ['css', 'legacy']
+      }
+    };
+
+    await html2pdf().set(opt).from(container).save();
+
+  } catch (err) {
+    console.error('PDF EXPORT ERROR:', err);
+    alert(
+      'สร้าง PDF ไม่สำเร็จ\n\n' +
+      'สาเหตุที่เป็นไปได้:\n' +
+      '1) Template Word ซับซ้อนเกินไป\n' +
+      '2) มีรูป/ตาราง/ฟอนต์ที่ตัวแปลงอ่านไม่ได้\n' +
+      '3) อินเทอร์เน็ตโหลด library ไม่ครบ\n\n' +
+      'รายละเอียด: ' + (err.message || err)
+    );
+  } finally {
+    container.remove();
+  }
+}
 // ====================================================================
 // Render Result
 // ====================================================================
@@ -504,11 +580,22 @@ function renderResult() {
               ${f.urls.map((u, j) => `<span>URL${j+1}: ${escapeHtml(u)}</span>`).join('')}
             </div>
           </div>
-          <button class="dl-btn" data-idx="${i}">
+          <button class="dl-btn docx-btn" data-idx="${i}">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
             </svg>
             .docx
+          </button>
+
+          <button class="dl-btn pdf-btn" data-idx="${i}" style="margin-left:6px;">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+              <polyline points="14 2 14 8 20 8"/>
+              <line x1="8" y1="13" x2="16" y2="13"/>
+              <line x1="8" y1="17" x2="16" y2="17"/>
+              <line x1="8" y1="9" x2="10" y2="9"/>
+            </svg>
+            PDF
           </button>
         </div>
       `).join('')}
@@ -528,11 +615,30 @@ function renderResult() {
       setTimeout(() => URL.revokeObjectURL(url), 5000);
     });
   });
-  body.querySelectorAll('.dl-btn').forEach(btn => {
+  body.querySelectorAll('.docx-btn').forEach(btn => {
     btn.addEventListener('click', () => {
       const idx = parseInt(btn.dataset.idx, 10);
       const f = files[idx];
       saveAs(f.blob, f.name);
+    });
+  });
+
+  body.querySelectorAll('.pdf-btn').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const idx = parseInt(btn.dataset.idx, 10);
+      const f = files[idx];
+
+      const oldText = btn.innerHTML;
+      btn.disabled = true;
+      btn.innerHTML = 'กำลังสร้าง PDF...';
+
+      try {
+        const pdfName = f.name.replace(/\.docx$/i, '.pdf');
+        await downloadPdfFromDocxBlob(f.blob, pdfName);
+      } finally {
+        btn.disabled = false;
+        btn.innerHTML = oldText;
+      }
     });
   });
 
