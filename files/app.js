@@ -7,7 +7,6 @@
 'use strict';
    
 console.log('APP JS VERSION: 20260518-2235');
-alert('โหลด app.js เวอร์ชันใหม่แล้ว: 20260518-2235');
    
 // ====================================================================
 // Configuration
@@ -183,19 +182,26 @@ function setupTemplateUpload() {
           return;
         }
 
-        // ลองอ่านด้วย PizZip แบบไม่บล็อกไฟล์เร็วเกินไป
+         // อ่านโครงสร้าง .docx ด้วย JSZip แทน PizZip
         try {
-          const testZip = new PizZip(buf);
+          const testZip = await JSZip.loadAsync(buf);
 
           if (!testZip.file('word/document.xml')) {
-            console.warn('ไม่พบ word/document.xml แต่จะยังไม่บล็อกทันที:', file.name);
+            alert(
+              'ไฟล์นี้เป็น .docx แต่ไม่พบ word/document.xml\n\n' +
+              'กรุณาเปิดไฟล์ใน Microsoft Word แล้ว Save As เป็น Word Document (*.docx) ใหม่'
+            );
+            return;
           }
         } catch (zipErr) {
-          console.error('DOCX ZIP WARNING:', zipErr);
+          console.error('DOCX JSZip ERROR:', zipErr);
           alert(
             'ระบบอ่านโครงสร้าง .docx ไม่สำเร็จ\n\n' +
-            'กรุณาลอง Save As ไฟล์ Word ใหม่เป็น .docx อีกครั้ง\n' +
-            'ถ้ายังไม่ได้ ให้ส่งไฟล์ Template มาให้ตรวจโครงสร้าง'
+            'สาเหตุที่เป็นไปได้:\n' +
+            '1) ไฟล์ .docx เสียหรือถูกป้องกัน\n' +
+            '2) ไฟล์ถูก Encrypt / ใส่รหัสผ่าน\n' +
+            '3) ไฟล์ไม่ใช่ .docx แท้\n' +
+            '4) ไฟล์ถูก Export จากระบบอื่นแล้วโครงสร้างไม่มาตรฐาน'
           );
           return;
         }
@@ -323,30 +329,27 @@ function escapeXml(s) {
  * รับ ArrayBuffer ของ template และ object ของตัวแปร
  * คืน Blob ของ .docx ที่ replace ตัวแปรเรียบร้อย
  */
-function generateDocxBlob(templateArrayBuffer, variables) {
-  // แปลงเป็น Uint8Array เพื่อให้ PizZip อ่าน .docx ได้เสถียรกว่า
-  const zip = new PizZip(new Uint8Array(templateArrayBuffer.slice(0)));
+async function generateDocxBlob(templateArrayBuffer, variables) {
+  const zip = await JSZip.loadAsync(templateArrayBuffer.slice(0));
 
-  CONFIG.xmlFilesToProcess.forEach(filePath => {
+  for (const filePath of CONFIG.xmlFilesToProcess) {
     const file = zip.file(filePath);
-    if (!file) return;
+    if (!file) continue;
 
-    let xml = file.asText();
+    let xml = await file.async('text');
 
-    // Replace ตัวแปรทุกตัว
     CONFIG.variables.forEach(varName => {
       const value = variables[varName];
       if (value === undefined) return;
-      // ใน XML, < และ > ถูกเก็บเป็น &lt; และ &gt;
+
       const search = `&lt;${varName}&gt;`;
-      // split + join เป็นวิธี replaceAll ที่เร็วและ safe (ไม่ต้องสร้าง regex)
       xml = xml.split(search).join(escapeXml(value));
     });
 
     zip.file(filePath, xml);
-  });
+  }
 
-  return zip.generate({
+  return await zip.generateAsync({
     type: 'blob',
     mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
     compression: 'DEFLATE'
@@ -410,7 +413,7 @@ async function processLetters() {
         URL4: group[3] || ''
       };
 
-      const blob = generateDocxBlob(state.templates[state.platform], vars);
+      const blob = await generateDocxBlob(state.templates[state.platform], vars);
       const fileName = `หนังสือ_${platformName}_เลขที่_${currentNo}.docx`;
       state.generatedFiles.push({
         name: fileName,
