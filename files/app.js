@@ -157,17 +157,36 @@ function setupTemplateUpload() {
       }
       const platform = e.target.dataset.tpl;
       try {
-        const buf = await file.arrayBuffer();
-        // ตรวจว่าเปิดเป็น docx (zip) ได้จริงไหม
-        try {
-          new PizZip(buf);
-        } catch (zipErr) {
-          alert('ไฟล์ไม่ถูกต้อง — อ่านเป็น .docx ไม่ได้');
+         const buf = await file.arrayBuffer();
+
+      // แปลง ArrayBuffer เป็น Uint8Array ก่อนส่งให้ PizZip
+      // เพื่อให้ Browser/GitHub Pages อ่านไฟล์ .docx ได้เสถียรกว่า
+      const docxData = new Uint8Array(buf);
+
+      // ตรวจว่าเปิดเป็น docx ได้จริงไหม
+      try {
+        const testZip = new PizZip(docxData);
+
+        // ตรวจว่าข้างในมีไฟล์หลักของ Word จริงหรือไม่
+        if (!testZip.file('word/document.xml')) {
+          alert('ไฟล์นี้ไม่ใช่ Word Template .docx ที่ถูกต้อง หรือไม่มี word/document.xml');
           return;
         }
-        state.templates[platform]     = buf;
-        state.templateNames[platform] = file.name;
-        await saveTemplateToDb(platform, buf, file.name);
+      } catch (zipErr) {
+        console.error('DOCX ZIP ERROR:', zipErr);
+        alert(
+          'ไฟล์นี้อ่านเป็น .docx ไม่ได้\n\n' +
+          'ให้ตรวจสอบว่า:\n' +
+          '1) ไฟล์ต้องเป็น .docx จริง ไม่ใช่ .doc ที่เปลี่ยนนามสกุล\n' +
+          '2) ลองเปิดไฟล์ใน Microsoft Word แล้ว Save As เป็น .docx ใหม่\n' +
+          '3) ห้ามใช้ไฟล์ที่เปิดอยู่ใน Word ขณะอัปโหลด'
+        );
+        return;
+      }
+
+      state.templates[platform]     = buf;
+      state.templateNames[platform] = file.name;
+      await saveTemplateToDb(platform, buf, file.name);
         markTemplateLoaded(platform, file.name);
         updateTemplateStatus();
       } catch (err) {
@@ -283,8 +302,8 @@ function escapeXml(s) {
  * คืน Blob ของ .docx ที่ replace ตัวแปรเรียบร้อย
  */
 function generateDocxBlob(templateArrayBuffer, variables) {
-  // PizZip ต้องการ ArrayBuffer copy เพราะมัน mutate state
-  const zip = new PizZip(templateArrayBuffer.slice(0));
+  // แปลงเป็น Uint8Array เพื่อให้ PizZip อ่าน .docx ได้เสถียรกว่า
+  const zip = new PizZip(new Uint8Array(templateArrayBuffer.slice(0)));
 
   CONFIG.xmlFilesToProcess.forEach(filePath => {
     const file = zip.file(filePath);
