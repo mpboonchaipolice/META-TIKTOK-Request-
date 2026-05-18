@@ -443,7 +443,141 @@ async function processLetters() {
 // ====================================================================
 // PDF Export: Convert generated DOCX Blob to PDF
 // ====================================================================
+// ====================================================================
+// PDF Export: Convert generated DOCX Blob to PDF
+// ====================================================================
+function loadScriptOnce(src, globalCheck) {
+  return new Promise((resolve, reject) => {
+    if (globalCheck && globalCheck()) {
+      resolve();
+      return;
+    }
+
+    const existing = Array.from(document.scripts).find(s => s.src === src);
+    if (existing) {
+      existing.addEventListener('load', () => resolve());
+      existing.addEventListener('error', () => reject(new Error('โหลด script ไม่สำเร็จ: ' + src)));
+      return;
+    }
+
+    const script = document.createElement('script');
+    script.src = src;
+    script.async = true;
+    script.onload = () => resolve();
+    script.onerror = () => reject(new Error('โหลด script ไม่สำเร็จ: ' + src));
+    document.head.appendChild(script);
+  });
+}
+
+async function ensurePdfLibrariesLoaded() {
+  // docx-preview บาง CDN ใช้ชื่อ window.docx บางกรณีอาจเป็น window.docxPreview
+  await loadScriptOnce(
+    'https://cdn.jsdelivr.net/npm/docx-preview@0.1.15/dist/docx-preview.min.js',
+    () => window.docx || window.docxPreview
+  );
+
+  await loadScriptOnce(
+    'https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js',
+    () => window.html2pdf
+  );
+
+  const docxRenderer = window.docx || window.docxPreview;
+
+  if (!docxRenderer || typeof docxRenderer.renderAsync !== 'function') {
+    throw new Error('โหลด docx-preview แล้ว แต่ไม่พบคำสั่ง renderAsync');
+  }
+
+  if (!window.html2pdf) {
+    throw new Error('โหลด html2pdf ไม่สำเร็จ');
+  }
+
+  return docxRenderer;
+}
+
 async function downloadPdfFromDocxBlob(docxBlob, pdfName) {
+  let docxRenderer;
+
+  try {
+    docxRenderer = await ensurePdfLibrariesLoaded();
+  } catch (err) {
+    console.error('PDF LIBRARY LOAD ERROR:', err);
+    alert(
+      'ยังโหลดตัวแปลง PDF ไม่ครบ\n\n' +
+      'สาเหตุที่เป็นไปได้:\n' +
+      '1) อินเทอร์เน็ตบล็อก CDN\n' +
+      '2) GitHub Pages ยัง cache ไฟล์เก่า\n' +
+      '3) browser โหลด library ไม่สำเร็จ\n\n' +
+      'รายละเอียด: ' + (err.message || err)
+    );
+    return;
+  }
+
+  const container = document.createElement('div');
+  container.style.position = 'fixed';
+  container.style.left = '-99999px';
+  container.style.top = '0';
+  container.style.width = '794px';
+  container.style.background = '#ffffff';
+  container.style.padding = '0';
+  container.style.margin = '0';
+  container.style.zIndex = '-1';
+
+  document.body.appendChild(container);
+
+  try {
+    await docxRenderer.renderAsync(docxBlob, container, null, {
+      className: 'docx',
+      inWrapper: true,
+      ignoreWidth: false,
+      ignoreHeight: false,
+      ignoreFonts: false,
+      breakPages: true,
+      renderHeaders: true,
+      renderFooters: true,
+      renderFootnotes: true,
+      renderEndnotes: true
+    });
+
+    await window.html2pdf()
+      .set({
+        margin: 0,
+        filename: pdfName,
+        image: {
+          type: 'jpeg',
+          quality: 0.98
+        },
+        html2canvas: {
+          scale: 2,
+          useCORS: true,
+          letterRendering: true,
+          backgroundColor: '#ffffff'
+        },
+        jsPDF: {
+          unit: 'mm',
+          format: 'a4',
+          orientation: 'portrait'
+        },
+        pagebreak: {
+          mode: ['css', 'legacy']
+        }
+      })
+      .from(container)
+      .save();
+
+  } catch (err) {
+    console.error('PDF EXPORT ERROR:', err);
+    alert(
+      'สร้าง PDF ไม่สำเร็จ\n\n' +
+      'สาเหตุที่เป็นไปได้:\n' +
+      '1) Template Word ซับซ้อนเกินไป\n' +
+      '2) มีรูป ตาราง หรือฟอนต์ที่ตัวแปลงอ่านไม่ได้\n' +
+      '3) ไฟล์ .docx สร้างได้ แต่ render เป็น PDF ไม่สมบูรณ์\n\n' +
+      'รายละเอียด: ' + (err.message || err)
+    );
+  } finally {
+    container.remove();
+  }
+}
   if (!window.docx || !window.html2pdf) {
     alert(
       'ยังโหลดตัวแปลง PDF ไม่ครบ\n\n' +
