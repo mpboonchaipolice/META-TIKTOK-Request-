@@ -6,7 +6,11 @@
 (() => {
 'use strict';
    
-console.log('APP JS VERSION: 20260518-2235');
+console.log('APP JS VERSION: 20260519-2');
+if (window.__showBanner) {
+  window.__showBanner('JS โหลดสำเร็จ ✓ กำลังเริ่มระบบ...');
+  setTimeout(function(){ window.__hideBanner && window.__hideBanner(); }, 1200);
+}
    
 // ====================================================================
 // Configuration
@@ -148,6 +152,30 @@ function updateTemplateStatus() {
   }
 }
 function setupTemplateUpload() {
+  // iOS Safari / browsers ที่ไม่เปิด file picker จาก label > input[hidden]
+  // ใช้ JS เรียก input.click() ตรงๆ + ย้าย input ออกจอด้วย CSS แทน hidden attribute
+  document.querySelectorAll('.template-card').forEach(card => {
+    const input = card.querySelector('input[data-tpl]');
+    if (!input) return;
+
+    // เอา hidden attribute ออกแล้วซ่อนด้วย CSS (iOS Safari ต้องการให้ input ไม่ display:none)
+    input.removeAttribute('hidden');
+    input.style.position   = 'absolute';
+    input.style.left       = '-9999px';
+    input.style.opacity    = '0';
+    input.style.width      = '1px';
+    input.style.height     = '1px';
+    input.style.pointerEvents = 'none';
+
+    // คลิกที่ card ใดๆ → trigger input.click() เอง
+    card.addEventListener('click', (e) => {
+      // อย่า re-trigger ตอนคลิกที่ input โดยตรง (label จะส่ง click มาเองอยู่แล้ว)
+      if (e.target === input) return;
+      e.preventDefault();
+      input.click();
+    });
+  });
+
   document.querySelectorAll('input[data-tpl]').forEach(input => {
     input.addEventListener('change', async (e) => {
       const file = e.target.files[0];
@@ -466,112 +494,192 @@ function loadScriptOnce(src, globalCheck) {
   });
 }
 
-async function ensurePdfLibrariesLoaded() {
+async function ensureDocxRendererLoaded() {
   await loadScriptOnce(
-    'https://cdn.jsdelivr.net/npm/docx-preview@0.1.15/dist/docx-preview.min.js',
+    'https://cdn.jsdelivr.net/npm/docx-preview@0.3.5/dist/docx-preview.min.js',
     () => window.docx || window.docxPreview
-  );
-
-  await loadScriptOnce(
-    'https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js',
-    () => window.html2pdf
   );
 
   const docxRenderer = window.docx || window.docxPreview;
 
   if (!docxRenderer || typeof docxRenderer.renderAsync !== 'function') {
-    throw new Error('โหลด docx-preview แล้ว แต่ไม่พบคำสั่ง renderAsync');
-  }
-
-  if (!window.html2pdf) {
-    throw new Error('โหลด html2pdf ไม่สำเร็จ');
+    throw new Error('โหลด docx-preview ไม่สำเร็จ — ไม่พบ renderAsync');
   }
 
   return docxRenderer;
 }
 
+/**
+ * เปิดหน้าต่างใหม่ที่ render เนื้อหา .docx แล้วเรียก Print Dialog
+ * ของเบราว์เซอร์ — ผู้ใช้เลือก "Save as PDF" / "บันทึกเป็น PDF" เพื่อได้ PDF
+ * วิธีนี้ใช้ Print Engine ของเบราว์เซอร์ → ผลลัพธ์ใกล้เคียงต้นฉบับ DOCX ที่สุด
+ */
 async function downloadPdfFromDocxBlob(docxBlob, pdfName) {
   let docxRenderer;
-
   try {
-    docxRenderer = await ensurePdfLibrariesLoaded();
+    docxRenderer = await ensureDocxRendererLoaded();
   } catch (err) {
     console.error('PDF LIBRARY LOAD ERROR:', err);
     alert(
-      'ยังโหลดตัวแปลง PDF ไม่ครบ\n\n' +
-      'สาเหตุที่เป็นไปได้:\n' +
-      '1) อินเทอร์เน็ตบล็อก CDN\n' +
-      '2) GitHub Pages ยัง cache ไฟล์เก่า\n' +
-      '3) browser โหลด library ไม่สำเร็จ\n\n' +
+      'โหลดตัวแปลง .docx ไม่สำเร็จ\n\n' +
+      'อาจเป็นเพราะอินเทอร์เน็ตบล็อก CDN\n\n' +
       'รายละเอียด: ' + (err.message || err)
     );
     return;
   }
 
-  const container = document.createElement('div');
-  container.style.position = 'fixed';
-  container.style.left = '-99999px';
-  container.style.top = '0';
-  container.style.width = '794px';
-  container.style.background = '#ffffff';
-  container.style.padding = '0';
-  container.style.margin = '0';
-  container.style.zIndex = '-1';
+  // เปิดหน้าต่างใหม่ก่อน (ต้องเปิดในจังหวะที่ user คลิก ไม่งั้น popup จะถูก block)
+  const printWindow = window.open('', '_blank', 'width=900,height=1200');
+  if (!printWindow) {
+    alert(
+      'เบราว์เซอร์บล็อก popup\n\n' +
+      'กรุณากดอนุญาต popup ของเว็บไซต์นี้ แล้วลองใหม่อีกครั้ง\n' +
+      '(แถบที่อยู่ → ไอคอน popup blocked → Always allow)'
+    );
+    return;
+  }
 
-  document.body.appendChild(container);
+  // ใส่ skeleton + style สำหรับ print
+  const docTitle = pdfName.replace(/\.pdf$/i, '');
+  printWindow.document.open();
+  printWindow.document.write(`
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8">
+  <title>${escapeHtml(docTitle)}</title>
+  <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;500;600;700&family=Noto+Sans+Thai:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    @page {
+      size: A4;
+      margin: 0;
+    }
+    html, body {
+      margin: 0;
+      padding: 0;
+      background: #ddd;
+      font-family: 'Sarabun', 'Noto Sans Thai', 'TH Sarabun New', 'Tahoma', sans-serif;
+    }
+    #__status {
+      position: fixed;
+      top: 0; left: 0; right: 0;
+      padding: 14px 20px;
+      background: #1a1a1a;
+      color: #fff;
+      font-family: ui-monospace, monospace;
+      font-size: 13px;
+      text-align: center;
+      z-index: 9999;
+    }
+    #__status button {
+      margin-left: 16px;
+      padding: 6px 14px;
+      background: #fff;
+      color: #1a1a1a;
+      border: none;
+      font-weight: 600;
+      cursor: pointer;
+      font-family: inherit;
+    }
+    #__content {
+      padding-top: 60px;
+    }
+    /* ทำให้ docx-preview render ออกมาดูใกล้กระดาษ */
+    .docx-wrapper {
+      background: #ddd !important;
+      padding: 20px 0 !important;
+    }
+    .docx-wrapper > section.docx {
+      box-shadow: 0 2px 12px rgba(0,0,0,0.2);
+      margin-bottom: 20px;
+      background: #fff;
+    }
+    @media print {
+      #__status { display: none !important; }
+      #__content { padding-top: 0 !important; }
+      html, body { background: #fff !important; }
+      .docx-wrapper {
+        background: #fff !important;
+        padding: 0 !important;
+      }
+      .docx-wrapper > section.docx {
+        box-shadow: none !important;
+        margin: 0 !important;
+        page-break-after: always;
+      }
+      .docx-wrapper > section.docx:last-child {
+        page-break-after: auto;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div id="__status">กำลังเตรียมไฟล์...</div>
+  <div id="__content"></div>
+</body>
+</html>
+  `);
+  printWindow.document.close();
+
+  // รอให้ DOM ของหน้าต่างใหม่พร้อม
+  await new Promise(r => setTimeout(r, 100));
+
+  const statusBar = printWindow.document.getElementById('__status');
+  const contentEl = printWindow.document.getElementById('__content');
 
   try {
-    await docxRenderer.renderAsync(docxBlob, container, null, {
+    statusBar.textContent = 'กำลัง render เนื้อหาจาก .docx...';
+
+    await docxRenderer.renderAsync(docxBlob, contentEl, null, {
       className: 'docx',
       inWrapper: true,
       ignoreWidth: false,
       ignoreHeight: false,
       ignoreFonts: false,
       breakPages: true,
+      experimental: true,
+      trimXmlDeclaration: true,
+      useBase64URL: true,
       renderHeaders: true,
       renderFooters: true,
       renderFootnotes: true,
-      renderEndnotes: true
+      renderEndnotes: true,
+      renderChanges: false
     });
 
-    await window.html2pdf()
-      .set({
-        margin: 0,
-        filename: pdfName,
-        image: {
-          type: 'jpeg',
-          quality: 0.98
-        },
-        html2canvas: {
-          scale: 2,
-          useCORS: true,
-          letterRendering: true,
-          backgroundColor: '#ffffff'
-        },
-        jsPDF: {
-          unit: 'mm',
-          format: 'a4',
-          orientation: 'portrait'
-        },
-        pagebreak: {
-          mode: ['css', 'legacy']
-        }
-      })
-      .from(container)
-      .save();
+    // รอให้ฟอนต์ + รูปโหลด
+    if (printWindow.document.fonts && printWindow.document.fonts.ready) {
+      await printWindow.document.fonts.ready;
+    }
+    await new Promise(r => setTimeout(r, 500));
+
+    statusBar.innerHTML = `
+      พร้อมบันทึกเป็น PDF — ในหน้าต่าง Print กรุณาเลือกปลายทางเป็น <b>"Save as PDF"</b> /
+      <b>"บันทึกเป็น PDF"</b>
+      <button id="__printBtn">เปิดหน้าต่าง Print อีกครั้ง</button>
+    `;
+    printWindow.document.getElementById('__printBtn').onclick = () => {
+      printWindow.focus();
+      printWindow.print();
+    };
+
+    // ตั้งชื่อไฟล์ที่ print dialog จะเสนอเป็นค่า default
+    printWindow.document.title = docTitle;
+
+    // เรียก print dialog ทันที
+    printWindow.focus();
+    printWindow.print();
 
   } catch (err) {
-    console.error('PDF EXPORT ERROR:', err);
+    console.error('PDF RENDER ERROR:', err);
+    statusBar.style.background = '#b80c0c';
+    statusBar.innerHTML = 'Render ไม่สำเร็จ: ' + escapeHtml(err.message || String(err));
     alert(
       'สร้าง PDF ไม่สำเร็จ\n\n' +
-      'สาเหตุที่เป็นไปได้:\n' +
-      '1) Template Word ซับซ้อนเกินไป\n' +
-      '2) มีรูป ตาราง หรือฟอนต์ที่ตัวแปลงอ่านไม่ได้\n' +
-      '3) ไฟล์ .docx สร้างได้ แต่ render เป็น PDF ไม่สมบูรณ์\n\n' +
+      'อาจเป็นเพราะ Template Word ใช้ feature ที่ docx-preview ยังไม่รองรับ\n' +
+      'วิธีสำรอง: ดาวน์โหลด .docx แล้วเปิดใน Microsoft Word → Save As PDF\n\n' +
       'รายละเอียด: ' + (err.message || err)
     );
-  } finally {
-    container.remove();
   }
 }
 function escapeHtml(s) {
@@ -751,13 +859,32 @@ function setupReset() {
 // ====================================================================
 // Init
 // ====================================================================
-document.addEventListener('DOMContentLoaded', async () => {
-  setupTemplateUpload();
-  setupPlatformSelector();
-  setupExcelUpload();
-  setupReset();
-  $('btnRun').addEventListener('click', processLetters);
-  await restoreTemplatesFromDb();
-});
+function bootstrap() {
+  try {
+    setupTemplateUpload();
+    setupPlatformSelector();
+    setupExcelUpload();
+    setupReset();
+    const runBtn = $('btnRun');
+    if (runBtn) runBtn.addEventListener('click', processLetters);
+    restoreTemplatesFromDb().catch(err => console.warn('restore templates:', err));
+    if (window.__showBanner) {
+      window.__showBanner('พร้อมใช้งาน ✓');
+      setTimeout(function(){ window.__hideBanner && window.__hideBanner(); }, 1000);
+    }
+  } catch (err) {
+    console.error('BOOTSTRAP ERROR:', err);
+    if (window.__showBanner) {
+      window.__showBanner('เริ่มระบบไม่สำเร็จ: ' + (err.message || err), '#b80c0c');
+    }
+  }
+}
+
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', bootstrap);
+} else {
+  // DOM พร้อมแล้ว — รันทันที
+  bootstrap();
+}
 
 })();
