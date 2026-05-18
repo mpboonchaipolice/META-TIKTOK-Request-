@@ -5,6 +5,7 @@
 
 (() => {
 'use strict';
+   
 console.log('APP JS VERSION: 20260518-2235');
 alert('โหลด app.js เวอร์ชันใหม่แล้ว: 20260518-2235');
    
