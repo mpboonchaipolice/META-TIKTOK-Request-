@@ -443,9 +443,6 @@ async function processLetters() {
 // ====================================================================
 // PDF Export: Convert generated DOCX Blob to PDF
 // ====================================================================
-// ====================================================================
-// PDF Export: Convert generated DOCX Blob to PDF
-// ====================================================================
 function loadScriptOnce(src, globalCheck) {
   return new Promise((resolve, reject) => {
     if (globalCheck && globalCheck()) {
@@ -470,7 +467,6 @@ function loadScriptOnce(src, globalCheck) {
 }
 
 async function ensurePdfLibrariesLoaded() {
-  // docx-preview บาง CDN ใช้ชื่อ window.docx บางกรณีอาจเป็น window.docxPreview
   await loadScriptOnce(
     'https://cdn.jsdelivr.net/npm/docx-preview@0.1.15/dist/docx-preview.min.js',
     () => window.docx || window.docxPreview
@@ -578,82 +574,6 @@ async function downloadPdfFromDocxBlob(docxBlob, pdfName) {
     container.remove();
   }
 }
-  if (!window.docx || !window.html2pdf) {
-    alert(
-      'ยังโหลดตัวแปลง PDF ไม่ครบ\n\n' +
-      'กรุณาตรวจสอบว่าใน index.html มี docx-preview และ html2pdf แล้ว'
-    );
-    return;
-  }
-
-  const container = document.createElement('div');
-  container.style.position = 'fixed';
-  container.style.left = '-99999px';
-  container.style.top = '0';
-  container.style.width = '794px';
-  container.style.background = '#ffffff';
-  container.style.padding = '0';
-  container.style.margin = '0';
-  container.style.zIndex = '-1';
-
-  document.body.appendChild(container);
-
-  try {
-    await window.docx.renderAsync(docxBlob, container, null, {
-      className: 'docx',
-      inWrapper: true,
-      ignoreWidth: false,
-      ignoreHeight: false,
-      ignoreFonts: false,
-      breakPages: true,
-      renderHeaders: true,
-      renderFooters: true,
-      renderFootnotes: true,
-      renderEndnotes: true
-    });
-
-    const opt = {
-      margin: 0,
-      filename: pdfName,
-      image: {
-        type: 'jpeg',
-        quality: 0.98
-      },
-      html2canvas: {
-        scale: 2,
-        useCORS: true,
-        letterRendering: true,
-        backgroundColor: '#ffffff'
-      },
-      jsPDF: {
-        unit: 'mm',
-        format: 'a4',
-        orientation: 'portrait'
-      },
-      pagebreak: {
-        mode: ['css', 'legacy']
-      }
-    };
-
-    await html2pdf().set(opt).from(container).save();
-
-  } catch (err) {
-    console.error('PDF EXPORT ERROR:', err);
-    alert(
-      'สร้าง PDF ไม่สำเร็จ\n\n' +
-      'สาเหตุที่เป็นไปได้:\n' +
-      '1) Template Word ซับซ้อนเกินไป\n' +
-      '2) มีรูป/ตาราง/ฟอนต์ที่ตัวแปลงอ่านไม่ได้\n' +
-      '3) อินเทอร์เน็ตโหลด library ไม่ครบ\n\n' +
-      'รายละเอียด: ' + (err.message || err)
-    );
-  } finally {
-    container.remove();
-  }
-}
-// ====================================================================
-// Render Result
-// ====================================================================
 function escapeHtml(s) {
   return String(s).replace(/[&<>"']/g, c => ({
     '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'
